@@ -14,14 +14,13 @@ void main() {
   runApp(const MyApp());
 }
 
-
 // --- UI E APP PRINCIPAL ---
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-     return MaterialApp(
+    return MaterialApp(
       title: 'Receitas & Avaliações',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -32,7 +31,7 @@ class MyApp extends StatelessWidget {
       // Rotas nomeadas
       routes: {
         '/': (context) => const HomePage(),
-        '/detalhe': (context) => const RecipeDetailPage(),
+        '/detalhe': (context) => const ReceitaDetailPage(),
         '/avaliacao': (context) => const MyReviewsPage(),
         '/cofig': (context) => const SettingsPage(),
       },
@@ -41,150 +40,155 @@ class MyApp extends StatelessWidget {
   }
 }
 
-
 /// ======================= MODELOS / API / STORAGE ===========================
 
-class Recipe {
+class Receita {
   final int id;
-  final String name;
-  final String image;
-  final String cuisine;
-  final List<String> ingredients;
-  final String instructions;
-  final int prepMinutes;
-  final int cookMinutes;
-  final String difficulty;
-  final int servings;
+  final String nome; // "receita"
+  final String ingredientesTexto; // texto grande "ingredientes"
+  final String modoPreparo; // "modo_preparo"
+  final String linkImagem;
+  final String tipo;
+  final DateTime? criadoEm;
+  final List<String> ingredientesBase; // nomesIngrediente[]
 
-  Recipe({
+  Receita({
     required this.id,
-    required this.name,
-    required this.image,
-    required this.cuisine,
-    required this.ingredients,
-    required this.instructions,
-    required this.prepMinutes,
-    required this.cookMinutes,
-    required this.difficulty,
-    required this.servings,
+    required this.nome,
+    required this.ingredientesTexto,
+    required this.modoPreparo,
+    required this.linkImagem,
+    required this.tipo,
+    required this.criadoEm,
+    required this.ingredientesBase,
   });
 
-  factory Recipe.fromJson(Map<String, dynamic> j) => Recipe(
-        id: (j['id'] as num).toInt(),
-        name: (j['name'] ?? 'Sem título').toString(),
-        image: (j['image'] ?? '').toString(),
-        cuisine: (j['cuisine'] ?? '').toString(),
-        ingredients: (j['ingredients'] is List)
-            ? (j['ingredients'] as List).map((e) => e.toString()).toList()
-            : <String>[],
-        instructions: (j['instructions'] ?? '').toString(),
-        prepMinutes: (j['prepTimeMinutes'] ?? 0) is num
-            ? (j['prepTimeMinutes'] as num).toInt()
-            : int.tryParse(j['prepTimeMinutes'].toString()) ?? 0,
-        cookMinutes: (j['cookTimeMinutes'] ?? 0) is num
-            ? (j['cookTimeMinutes'] as num).toInt()
-            : int.tryParse(j['cookTimeMinutes'].toString()) ?? 0,
-        difficulty: (j['difficulty'] ?? '').toString(),
-        servings: (j['servings'] ?? 0) is num
-            ? (j['servings'] as num).toInt()
-            : int.tryParse(j['servings'].toString()) ?? 0,
-      );
+  factory Receita.fromJson(Map<String, dynamic> j) {
+    // Pega lista dentro de IngredientesBase[0].nomesIngrediente
+    List<String> listaBase = [];
+    if (j["IngredientesBase"] is List && j["IngredientesBase"].isNotEmpty) {
+      final item = j["IngredientesBase"][0];
+      if (item["nomesIngrediente"] is List) {
+        listaBase = (item["nomesIngrediente"] as List)
+            .map((e) => e.toString())
+            .toList();
+      }
+    }
+
+    return Receita(
+      id: (j["id"] as num).toInt(),
+      nome: (j["receita"] ?? "Sem nome").toString(),
+      ingredientesTexto: (j["ingredientes"] ?? "").toString(),
+      modoPreparo: (j["modo_preparo"] ?? "").toString(),
+      linkImagem: (j["link_imagem"] ?? "").toString(),
+      tipo: (j["tipo"] ?? "").toString().capitalizar(),
+      criadoEm: j["created_at"] != null
+          ? DateTime.tryParse(j["created_at"])
+          : null,
+      ingredientesBase: listaBase,
+    );
+  }
 }
 
-class DummyRecipesApi {
-  // API pública (sem chave)
-  // Ex.: GET https://dummyjson.com/recipes?limit=50
-  static Future<List<Recipe>> fetchRecipes({int limit = 60}) async {
-    final uri = Uri.parse('https://dummyjson.com/recipes?limit=$limit');
-    final res = await http.get(uri);
-    if (res.statusCode != 200) {
-      throw Exception('Falha ao carregar receitas (${res.statusCode}).');
+class ReceitasApi {
+  static Future<List<Receita>> buscarReceitas() async {
+    final uri = Uri.parse(
+      'https://api-receitas-pi.vercel.app/receitas/todas?page=1&limit=60',
+    );
+    final resposta = await http.get(uri);
+
+    if (resposta.statusCode != 200) {
+      throw Exception(
+        'Erro ao carregar receitas (código: ${resposta.statusCode}).',
+      );
     }
-    final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final list = (data['recipes'] as List)
-        .map((e) => Recipe.fromJson(e as Map<String, dynamic>))
+
+    final dados = jsonDecode(resposta.body) as Map<String, dynamic>;
+    final lista = (dados['items'] as List)
+        .map((item) => Receita.fromJson(item as Map<String, dynamic>))
         .toList();
-    return list;
+
+    return lista;
   }
 }
 
 class Review {
-  final int recipeId;
-  final String title;
+  final int receitaId;
+  final String titulo;
   final String image;
-  final double rating; // 0..5
-  final String comment;
-  final String updatedAtIso;
+  final double avaliacao; // 0..5
+  final String comentario;
+  final String dataComentario;
 
   Review({
-    required this.recipeId,
-    required this.title,
+    required this.receitaId,
+    required this.titulo,
     required this.image,
-    required this.rating,
-    required this.comment,
-    required this.updatedAtIso,
+    required this.avaliacao,
+    required this.comentario,
+    required this.dataComentario,
   });
 
   Map<String, dynamic> toJson() => {
-        'recipeId': recipeId,
-        'title': title,
-        'image': image,
-        'rating': rating,
-        'comment': comment,
-        'updatedAtIso': updatedAtIso,
-      };
+    'receitaId': receitaId,
+    'titulo': titulo,
+    'image': image,
+    'avaliacao': avaliacao,
+    'comentario': comentario,
+    'dataComentario': dataComentario,
+  };
 
   factory Review.fromJson(Map<String, dynamic> j) => Review(
-        recipeId: (j['recipeId'] as num).toInt(),
-        title: (j['title'] ?? '').toString(),
-        image: (j['image'] ?? '').toString(),
-        rating: (j['rating'] is int)
-            ? (j['rating'] as int).toDouble()
-            : (j['rating'] as num).toDouble(),
-        comment: (j['comment'] ?? '').toString(),
-        updatedAtIso: (j['updatedAtIso'] ?? '').toString(),
-      );
+    receitaId: (j['receitaId'] as num).toInt(),
+    titulo: (j['titulo'] ?? '').toString(),
+    image: (j['image'] ?? '').toString(),
+    avaliacao: (j['avaliacao'] is int)
+        ? (j['avaliacao'] as int).toDouble()
+        : (j['avaliacao'] as num).toDouble(),
+    comentario: (j['comentario'] ?? '').toString(),
+    dataComentario: (j['dataComentario'] ?? '').toString(),
+  );
 }
 
 class Storage {
-  static const kUser = 'pref_user';
-  static const kFavs = 'pref_favs'; // List<int> como JSON
-  static const kReviews = 'pref_reviews'; // List<Review> como JSON
+  static const keyUsuario = 'pref_user'; //String
+  static const keyFavs = 'pref_favs'; // List<int> como JSON
+  static const keyAvaliacoes = 'pref_avaliacoes'; // List<Review> como JSON
 
   static Future<String?> getUser() async {
-    final p = await SharedPreferences.getInstance();
-    return p.getString(kUser);
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(keyUsuario);
   }
 
-  static Future<void> setUser(String v) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(kUser, v);
+  static Future<void> setUser(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyUsuario, name);
   }
 
   static Future<List<int>> getFavs() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(kFavs);
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(keyFavs);
     if (raw == null || raw.isEmpty) return [];
-    return (jsonDecode(raw) as List).map((e) => (e as num).toInt()).toList();
+    return (jsonDecode(raw) as List).map((e) => (e as num).toInt()).toList(); //vai retornar um array de ids
   }
 
   static Future<void> setFavs(List<int> ids) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(kFavs, jsonEncode(ids));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(keyFavs, jsonEncode(ids));
   }
 
   static Future<List<Review>> getReviews() async {
-    final p = await SharedPreferences.getInstance();
-    final raw = p.getString(kReviews);
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(keyAvaliacoes);
     if (raw == null || raw.isEmpty) return [];
     final list = jsonDecode(raw) as List;
     return list.map((e) => Review.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   static Future<void> setReviews(List<Review> list) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(
-      kReviews,
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      keyAvaliacoes,
       jsonEncode(list.map((e) => e.toJson()).toList()),
     );
   }
@@ -199,18 +203,18 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late Future<List<Recipe>> _future;
-  final _search = TextEditingController();
+  late Future<List<Receita>> _future;
+  final _pesquisar = TextEditingController();
   List<int> _favs = [];
 
   @override
   void initState() {
     super.initState();
-    _future = DummyRecipesApi.fetchRecipes(limit: 60);
-    _loadFavs();
+    _future = ReceitasApi.buscarReceitas();
+    _carregarFavs();
   }
 
-  Future<void> _loadFavs() async {
+  Future<void> _carregarFavs() async {
     final favs = await Storage.getFavs();
     setState(() => _favs = favs);
   }
@@ -224,7 +228,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _search.dispose();
+    _pesquisar.dispose();
     super.dispose();
   }
 
@@ -236,10 +240,12 @@ class _HomePageState extends State<HomePage> {
         title: FutureBuilder<String?>(
           future: userFuture,
           builder: (_, s) {
-            final name = s.data;
-            return Text(name == null || name.isEmpty
-                ? 'Receitas & Avaliações'
-                : 'Olá, $name 👩‍🍳');
+            final nomeUsuario = s.data;
+            return Text(
+              nomeUsuario == null || nomeUsuario.isEmpty
+                  ? 'Receitas & Avaliações'
+                  : 'Olá, $nomeUsuario 👩‍🍳',
+            );
           },
         ),
         actions: [
@@ -260,23 +266,25 @@ class _HomePageState extends State<HomePage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: TextField(
-              controller: _search,
+              controller: _pesquisar,
               decoration: InputDecoration(
-                labelText: 'Buscar por nome ou culinária...',
+                labelText: 'Buscar por nome ou tipo de receita',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) => setState(() {}), //reconstroi dnv a tela
             ),
           ),
           Expanded(
-            child: FutureBuilder<List<Recipe>>(
+            child: FutureBuilder<List<Receita>>(
               future: _future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator()); // Mostra um ícone de loading.
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  ); // Mostra um ícone de loading.
                 }
                 if (snapshot.hasError) {
                   return Center(
@@ -286,84 +294,80 @@ class _HomePageState extends State<HomePage> {
                     ),
                   );
                 }
-                var recipes = snapshot.data ?? [];
-                final q = _search.text.trim().toLowerCase();
-                if (q.isNotEmpty) {
-                  recipes = recipes.where((r) {
-                    final inName = r.name.toLowerCase().contains(q);
-                    final inCuisine = r.cuisine.toLowerCase().contains(q);
-                    return inName || inCuisine;
+                var receitas = snapshot.data ?? [];
+                final pesquisar = _pesquisar.text.trim().toLowerCase(); //se tiver valor na barra de pesquisa, filtra a lista
+                if (pesquisar.isNotEmpty) {
+                  receitas = receitas.where((receita) {
+                    final contemNome = receita.nome.toLowerCase().contains(pesquisar);
+                    final contemTipo = receita.tipo.toLowerCase().contains(pesquisar);
+                    return contemNome || contemTipo;
                   }).toList();
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: recipes.length,
+                  itemCount: receitas.length,
                   itemBuilder: (_, i) {
-                    final r = recipes[i];
-                    final fav = _favs.contains(r.id);
+                    final receita = receitas[i];
+                    final fav = _favs.contains(receita.id);
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
-                        onTap: () {
+                      child: InkWell( //anima o hover do card e deixa clicável
+                      onTap: () {
                           // Envia ID (e o objeto junto) via arguments
                           Navigator.pushNamed(
                             context,
                             "/detalhe",
-                            arguments: {'id': r.id, 'recipe': r},
-                          ).then((_) => _loadFavs());
+                            arguments: {'id': receita.id, 'receita': receita},
+                          ).then((_) => _carregarFavs());
                         },
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _Thumb(url: r.image),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(r.name,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 4),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 4,
-                                      children: [
-                                        if (r.cuisine.isNotEmpty)
-                                          _InfoChip(
-                                              icon: Icons.public,
-                                              text: r.cuisine),
-                                        _InfoChip(
-                                            icon: Icons.timer_outlined,
-                                            text:
-                                                '${r.prepMinutes + r.cookMinutes} min'),
-                                        if (r.difficulty.isNotEmpty)
-                                          _InfoChip(
-                                              icon: Icons.flag_outlined,
-                                              text: r.difficulty),
-                                        _InfoChip(
-                                            icon: Icons.people_outline,
-                                            text: '${r.servings} porções'),
-                                      ],
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _MiniImagem(url: receita.linkImagem),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    receita.nome,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    children: [
+                                      if (receita.tipo.isNotEmpty)
+                                        _InfoChip(
+                                          icon: Icons.public,
+                                          text: receita.tipo,
+                                        ),
+                                      _InfoChip(
+                                        icon: Icons.timer_outlined,
+                                        text:
+                                            '${receita.ingredientesBase.length} ingredientes',
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                              IconButton(
-                                tooltip: fav
-                                    ? 'Remover dos favoritos'
-                                    : 'Favoritar',
-                                onPressed: () => _toggleFav(r.id),
-                                icon: Icon(
-                                  fav
-                                      ? Icons.favorite
-                                      : Icons.favorite_border,
-                                ),
+                            ),
+                            IconButton(
+                              tooltip: fav
+                                  ? 'Remover dos favoritos'
+                                  : 'Favoritar',
+                              onPressed: () => _toggleFav(receita.id),
+                              icon: Icon(
+                                fav ? Icons.favorite : Icons.favorite_border,
                               ),
-                            ],
+                            ),
+                          ],
                           ),
                         ),
                       ),
@@ -379,99 +383,96 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-
-
 /// ================================ TELA DE DETALHES ====================================
-class RecipeDetailPage extends StatefulWidget {
-  const RecipeDetailPage({super.key});
+class ReceitaDetailPage extends StatefulWidget {
+  const ReceitaDetailPage({super.key});
   @override
-  State<RecipeDetailPage> createState() => _RecipeDetailPageState();
+  State<ReceitaDetailPage> createState() => _ReceitaDetailPageState();
 }
 
-class _RecipeDetailPageState extends State<RecipeDetailPage> {
-  late int recipeId;
-  late Recipe recipe;
-  double _rating = 0;
-  final _comment = TextEditingController();
+class _ReceitaDetailPageState extends State<ReceitaDetailPage> {
+  late int receitaId;
+  late Receita receita;
+  double _avaliacao = 0;
+  final _comentario = TextEditingController();
   bool _fav = false;
 
-  // Para garantir leitura única dos arguments
-  bool _argsLoaded = false;
+  // Para garantir leitura única dos arguments da rota
+  bool _carregando = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_argsLoaded) {
+    if (!_carregando) {
       final args =
-          ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-      recipeId = (args['id'] as num).toInt();
-      recipe = args['recipe'] as Recipe;
-      _argsLoaded = true;
-      _loadLocal();
+          ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>; //pega argumento passado pela rota
+      receitaId = (args['id'] as num).toInt();
+      receita = args['receita'] as Receita;
+      _carregando = true;
+      _carregarLocal();
     }
   }
 
-  Future<void> _loadLocal() async {
+  Future<void> _carregarLocal() async {
     final favs = await Storage.getFavs();
     final reviews = await Storage.getReviews();
-    final existing = reviews.where((e) => e.recipeId == recipeId).toList();
+    final existing = reviews.where((e) => e.receitaId == receitaId).toList();
     setState(() {
-      _fav = favs.contains(recipeId);
+      _fav = favs.contains(receitaId);
       if (existing.isNotEmpty) {
-        _rating = existing.first.rating;
-        _comment.text = existing.first.comment;
+        _avaliacao = existing.first.avaliacao;
+        _comentario.text = existing.first.comentario;
       }
     });
   }
 
   Future<void> _toggleFav() async {
     final favs = await Storage.getFavs();
-    favs.contains(recipeId) ? favs.remove(recipeId) : favs.add(recipeId);
+    favs.contains(receitaId) ? favs.remove(receitaId) : favs.add(receitaId);
     await Storage.setFavs(favs);
-    setState(() => _fav = favs.contains(recipeId));
+    setState(() => _fav = favs.contains(receitaId));
   }
 
-  Future<void> _saveReview() async {
+  Future<void> _salvarReview() async {
     final list = await Storage.getReviews();
-    final updated = List<Review>.from(list.where((e) => e.recipeId != recipeId));
-    updated.add(Review(
-      recipeId: recipeId,
-      title: recipe.name,
-      image: recipe.image,
-      rating: _rating,
-      comment: _comment.text.trim(),
-      updatedAtIso: DateTime.now().toIso8601String(),
-    ));
+    final updated = List<Review>.from(
+      list.where((e) => e.receitaId != receitaId),
+    );
+    updated.add(
+      Review(
+        receitaId: receitaId,
+        titulo: receita.nome,
+        image: receita.linkImagem,
+        avaliacao: _avaliacao,
+        comentario: _comentario.text.trim(),
+        dataComentario: DateTime.now().toIso8601String(),
+      ),
+    );
     await Storage.setReviews(updated);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Avaliação salva!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Avaliação salva!')));
     }
   }
 
-
   @override
   void dispose() {
-    _comment.dispose();
+    _comentario.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_argsLoaded) {
+    if (!_carregando) {
       // Primeira build pode ocorrer antes dos arguments estarem disponíveis
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final theme = Theme.of(context);
-    final totalMin = recipe.prepMinutes + recipe.cookMinutes;
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(recipe.name),
+        title: Text(receita.nome),
         actions: [
           IconButton(
             tooltip: _fav ? 'Remover dos favoritos' : 'Favoritar',
@@ -481,32 +482,35 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _saveReview,
+        onPressed: _salvarReview,
         icon: const Icon(Icons.save_outlined),
         label: const Text('Salvar avaliação'),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 96),
         children: [
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: recipe.image.isEmpty
-                ? Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: const Center(
-                      child: Icon(Icons.restaurant_menu, size: 48),
-                    ),
-                  )
-                : Image.network(
-                    recipe.image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+          SizedBox(
+            height: 500,
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: receita.linkImagem.isEmpty
+                  ? Container(
                       color: theme.colorScheme.surfaceContainerHighest,
                       child: const Center(
-                        child: Icon(Icons.broken_image_outlined, size: 48),
+                        child: Icon(Icons.restaurant_menu, size: 48),
+                      ),
+                    )
+                  : Image.network(
+                       'https://corsproxy.io/?${receita.linkImagem}',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Center(
+                          child: Icon(Icons.broken_image_outlined, size: 48),
+                        ),
                       ),
                     ),
-                  ),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -514,52 +518,58 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (recipe.cuisine.isNotEmpty)
-                  _InfoChip(icon: Icons.public, text: recipe.cuisine),
-                _InfoChip(icon: Icons.timer_outlined, text: '$totalMin min'),
-                if (recipe.difficulty.isNotEmpty)
-                  _InfoChip(icon: Icons.flag_outlined, text: recipe.difficulty),
+                if (receita.tipo.isNotEmpty)
+                  _InfoChip(icon: Icons.public, text: receita.tipo),
                 _InfoChip(
-                    icon: Icons.people_outline,
-                    text: '${recipe.servings} porções'),
+                  icon: Icons.timer_outlined,
+                  text: '${receita.ingredientesBase.length} ingredientes',
+                ),
               ],
             ),
           ),
-          if (recipe.ingredients.isNotEmpty)
+          if (receita.ingredientesBase.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text('Ingredientes',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold)),
+              child: Text(
+                'Ingredientes',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-          if (recipe.ingredients.isNotEmpty)
+          if (receita.ingredientesBase.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: recipe.ingredients
-                    .map((ing) => Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('• '),
-                            Expanded(child: Text(ing)),
-                          ],
-                        ))
+                children: receita.ingredientesBase
+                    .map(
+                      (ing) => Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('• '),
+                          Expanded(child: Text(ing.capitalizar())),
+                        ],
+                      ),
+                    )
                     .toList(),
               ),
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Text('Modo de preparo',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold)),
+            child: Text(
+              'Modo de preparo',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
-              recipe.instructions.isEmpty
+              receita.modoPreparo.isEmpty
                   ? 'Sem instruções disponíveis.'
-                  : recipe.instructions,
+                  : receita.modoPreparo,
               textAlign: TextAlign.justify,
             ),
           ),
@@ -575,22 +585,22 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                 const Icon(Icons.star_rate_outlined),
                 Expanded(
                   child: Slider(
-                    value: _rating.clamp(0, 5),
+                    value: _avaliacao.clamp(0, 5),
                     min: 0,
                     max: 5,
                     divisions: 10,
-                    label: _rating.toStringAsFixed(1),
-                    onChanged: (v) => setState(() => _rating = v),
+                    label: _avaliacao.toStringAsFixed(1),
+                    onChanged: (v) => setState(() => _avaliacao = v),
                   ),
                 ),
-                Text(_rating.toStringAsFixed(1)),
+                Text(_avaliacao.toStringAsFixed(1)),
               ],
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: TextField(
-              controller: _comment,
+              controller: _comentario,
               maxLines: 4,
               decoration: const InputDecoration(
                 labelText: 'Comentário',
@@ -598,7 +608,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                 border: OutlineInputBorder(),
               ),
             ),
-          )
+          ),
         ],
       ),
     );
@@ -612,66 +622,74 @@ class MyReviewsPage extends StatefulWidget {
 }
 
 class _MyReviewsPageState extends State<MyReviewsPage> {
-  List<Review> _reviews = [];
+  List<Review> _avaliacoes = [];
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _carregar();
   }
 
-  Future<void> _load() async {
+  Future<void> _carregar() async {
     final list = await Storage.getReviews();
-    setState(() => _reviews = list
-      ..sort((a, b) => b.updatedAtIso.compareTo(a.updatedAtIso)));
+    list.sort((a, b) => b.dataComentario.compareTo(a.dataComentario)); //mais recentes primeiro
+    
+    setState(() {
+      _avaliacoes = list;
+    });
   }
 
-  Future<void> _delete(int recipeId) async {
-    final copy = List<Review>.from(_reviews)
-      ..removeWhere((e) => e.recipeId == recipeId);
+  Future<void> _delete(int receitaId) async {
+    final copy = List<Review>.from(_avaliacoes);
+    copy.removeWhere((e) => e.receitaId == receitaId);
+
     await Storage.setReviews(copy);
-    setState(() => _reviews = copy);
+    setState(() => _avaliacoes = copy);
   }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Minhas Avaliações')),
-      body: _reviews.isEmpty
+      body: _avaliacoes.isEmpty
           ? const Center(child: Text('Nenhuma avaliação salva.'))
           : ListView.separated(
               padding: const EdgeInsets.all(16),
-              itemCount: _reviews.length,
+              itemCount: _avaliacoes.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (_, i) {
-                final r = _reviews[i];
+                final receita = _avaliacoes[i];
                 return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
-                        _Thumb(url: r.image, w: 84, h: 84),
+                        _MiniImagem(url: receita.image),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(r.title,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                              Text(
+                                receita.titulo,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               const SizedBox(height: 4),
-                              _StaticStars(value: r.rating),
+                              _Estrelas(value: receita.avaliacao),
                               const SizedBox(height: 8),
                               Text(
-                                r.comment.isEmpty
+                                receita.comentario.isEmpty
                                     ? '(Sem comentário)'
-                                    : r.comment,
+                                    : receita.comentario,
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Atualizado: ${r.updatedAtIso}',
+                                'Atualizado: ${receita.dataComentario}',
                                 style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
@@ -679,7 +697,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
                         ),
                         IconButton(
                           tooltip: 'Remover',
-                          onPressed: () => _delete(r.recipeId),
+                          onPressed: () => _delete(receita.receitaId),
                           icon: const Icon(Icons.delete_outline),
                         ),
                       ],
@@ -700,33 +718,33 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _name = TextEditingController();
+  final _nomeUsuario = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _carregar();
   }
 
-  Future<void> _load() async {
+  Future<void> _carregar() async {
     final user = await Storage.getUser() ?? '';
     setState(() {
-      _name.text = user;
+      _nomeUsuario.text = user;
     });
   }
 
-  Future<void> _save() async {
-    await Storage.setUser(_name.text.trim());
+  Future<void> _salvar() async {
+    await Storage.setUser(_nomeUsuario.text.trim());
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Configurações salvas!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Configurações salvas!')));
     }
   }
 
   @override
   void dispose() {
-    _name.dispose();
+    _nomeUsuario.dispose();
     super.dispose();
   }
 
@@ -741,7 +759,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Text('Perfil', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           TextField(
-            controller: _name,
+            controller: _nomeUsuario,
             decoration: const InputDecoration(
               labelText: 'Seu nome',
               prefixIcon: Icon(Icons.person_outline),
@@ -750,7 +768,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: _save,
+            onPressed: _salvar,
             icon: const Icon(Icons.save_outlined),
             label: const Text('Salvar'),
           ),
@@ -760,28 +778,25 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-
 /// ========================== WIDGETS AUXILIARES =============================
 
-class _Thumb extends StatelessWidget {
+class _MiniImagem extends StatelessWidget {
   final String url;
-  final double w;
-  final double h;
-  const _Thumb({required this.url, this.w = 96, this.h = 72});
+  final double largura;
+  final double altura;
+  const _MiniImagem({required this.url, this.largura = 84, this.altura = 84});
 
   @override
   Widget build(BuildContext context) {
-    final bg = Theme.of(context).colorScheme.surfaceContainerHighest;
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: w,
-        height: h,
-        color: bg,
+      child: SizedBox(
+        width: largura,
+        height: altura,
         child: url.isEmpty
             ? const Icon(Icons.restaurant_menu)
             : Image.network(
-                url,
+                 'https://corsproxy.io/?$url', //adicionado pois alguns links que a API retorna ficam bloqueado por CORS
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) =>
                     const Icon(Icons.broken_image_outlined),
@@ -797,26 +812,30 @@ class _InfoChip extends StatelessWidget {
   const _InfoChip({required this.icon, required this.text});
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      avatar: Icon(icon, size: 16),
-      label: Text(text),
-    );
+    return Chip(avatar: Icon(icon, size: 16), label: Text(text));
   }
 }
 
-class _StaticStars extends StatelessWidget {
+class _Estrelas extends StatelessWidget {
   final double value; // 0..5
-  const _StaticStars({required this.value});
+  const _Estrelas({required this.value});
 
   @override
   Widget build(BuildContext context) {
-    final sel = value.clamp(0, 5).round();
+    final votacao = value.clamp(0, 5).round(); //valor arredondado
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(
         5,
-        (i) => Icon(i < sel ? Icons.star : Icons.star_border, size: 18),
+        (icon) => Icon(icon < votacao ? Icons.star : Icons.star_border, size: 18),
       ),
     );
+  }
+}
+
+extension CapitalizarExt on String {
+  String capitalizar() {
+    if (isEmpty) return this;
+    return this[0].toUpperCase() + substring(1).toLowerCase();
   }
 }
