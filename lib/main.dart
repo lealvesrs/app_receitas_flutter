@@ -8,6 +8,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -31,9 +32,9 @@ class MyApp extends StatelessWidget {
       // Rotas nomeadas
       routes: {
         '/': (context) => const HomePage(),
-        '/detalhe': (context) => const ReceitaDetailPage(),
-        '/avaliacao': (context) => const MyReviewsPage(),
-        '/cofig': (context) => const SettingsPage(),
+        '/detalhe': (context) => const DetalheReceitaPage(),
+        '/avaliacao': (context) => const MinhasAvaliacoesPage(),
+        '/config': (context) => const ConfiguracoesPage(),
       },
       initialRoute: "/",
     );
@@ -49,7 +50,7 @@ class Receita {
   final String modoPreparo; // "modo_preparo"
   final String linkImagem;
   final String tipo;
-  final DateTime? criadoEm;
+  final String? criadoEm;
   final List<String> ingredientesBase; // nomesIngrediente[]
 
   Receita({
@@ -75,6 +76,14 @@ class Receita {
       }
     }
 
+    String? dataFormatada;
+    if (j["created_at"] != null) {
+      final parsed = DateTime.tryParse(j["created_at"]);
+      if (parsed != null) {
+        dataFormatada = DateFormat('dd/MM/yyyy HH:mm:ss').format(parsed);
+      }
+    }
+
     return Receita(
       id: (j["id"] as num).toInt(),
       nome: (j["receita"] ?? "Sem nome").toString(),
@@ -82,9 +91,7 @@ class Receita {
       modoPreparo: (j["modo_preparo"] ?? "").toString(),
       linkImagem: (j["link_imagem"] ?? "").toString(),
       tipo: (j["tipo"] ?? "").toString().capitalizar(),
-      criadoEm: j["created_at"] != null
-          ? DateTime.tryParse(j["created_at"])
-          : null,
+      criadoEm: dataFormatada,
       ingredientesBase: listaBase,
     );
   }
@@ -231,14 +238,14 @@ class _HomePageState extends State<HomePage> {
     _pesquisar.dispose();
     super.dispose();
   }
+  Future<String?> get _userFuture => Storage.getUser();
 
   @override
   Widget build(BuildContext context) {
-    final userFuture = Storage.getUser();
     return Scaffold(
       appBar: AppBar(
         title: FutureBuilder<String?>(
-          future: userFuture,
+          future: _userFuture,
           builder: (_, s) {
             final nomeUsuario = s.data;
             return Text(
@@ -256,7 +263,9 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             tooltip: 'Configurações',
-            onPressed: () => Navigator.pushNamed(context, "/config"),
+            onPressed: () =>
+              Navigator.pushNamed(context, "/config")
+              .then((_) => setState(() {})),
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
@@ -345,13 +354,18 @@ class _HomePageState extends State<HomePage> {
                                     children: [
                                       if (receita.tipo.isNotEmpty)
                                         _InfoChip(
-                                          icon: Icons.public,
+                                          icon: receita.tipo == 'Doce'? Icons.cake : Icons.restaurant,
                                           text: receita.tipo,
                                         ),
                                       _InfoChip(
-                                        icon: Icons.timer_outlined,
+                                        icon: Icons.numbers,
                                         text:
                                             '${receita.ingredientesBase.length} ingredientes',
+                                      ),
+                                      _InfoChip(
+                                        icon: Icons.calendar_month,
+                                        text:
+                                            'Criada em: ${receita.criadoEm}',
                                       ),
                                     ],
                                   ),
@@ -384,13 +398,13 @@ class _HomePageState extends State<HomePage> {
 }
 
 /// ================================ TELA DE DETALHES ====================================
-class ReceitaDetailPage extends StatefulWidget {
-  const ReceitaDetailPage({super.key});
+class DetalheReceitaPage extends StatefulWidget {
+  const DetalheReceitaPage({super.key});
   @override
-  State<ReceitaDetailPage> createState() => _ReceitaDetailPageState();
+  State<DetalheReceitaPage> createState() => _DetalheReceitaPageState();
 }
 
-class _ReceitaDetailPageState extends State<ReceitaDetailPage> {
+class _DetalheReceitaPageState extends State<DetalheReceitaPage> {
   late int receitaId;
   late Receita receita;
   double _avaliacao = 0;
@@ -436,8 +450,10 @@ class _ReceitaDetailPageState extends State<ReceitaDetailPage> {
   Future<void> _salvarReview() async {
     final list = await Storage.getReviews();
     final updated = List<Review>.from(
-      list.where((e) => e.receitaId != receitaId),
+      list.where((e) => e.receitaId != receitaId), //remove review antiga da mesma receita se tiver
     );
+    final agora = DateTime.now();
+    final dataFormatada = DateFormat('dd/MM/yyyy HH:mm:ss').format(agora);
     updated.add(
       Review(
         receitaId: receitaId,
@@ -445,7 +461,7 @@ class _ReceitaDetailPageState extends State<ReceitaDetailPage> {
         image: receita.linkImagem,
         avaliacao: _avaliacao,
         comentario: _comentario.text.trim(),
-        dataComentario: DateTime.now().toIso8601String(),
+        dataComentario: dataFormatada,
       ),
     );
     await Storage.setReviews(updated);
@@ -588,7 +604,7 @@ class _ReceitaDetailPageState extends State<ReceitaDetailPage> {
                     value: _avaliacao.clamp(0, 5),
                     min: 0,
                     max: 5,
-                    divisions: 10,
+                    divisions: 5,
                     label: _avaliacao.toStringAsFixed(1),
                     onChanged: (v) => setState(() => _avaliacao = v),
                   ),
@@ -615,13 +631,13 @@ class _ReceitaDetailPageState extends State<ReceitaDetailPage> {
   }
 }
 
-class MyReviewsPage extends StatefulWidget {
-  const MyReviewsPage({super.key});
+class MinhasAvaliacoesPage extends StatefulWidget {
+  const MinhasAvaliacoesPage({super.key});
   @override
-  State<MyReviewsPage> createState() => _MyReviewsPageState();
+  State<MinhasAvaliacoesPage> createState() => _MinhasAvaliacoesPageState();
 }
 
-class _MyReviewsPageState extends State<MyReviewsPage> {
+class _MinhasAvaliacoesPageState extends State<MinhasAvaliacoesPage> {
   List<Review> _avaliacoes = [];
 
   @override
@@ -678,7 +694,7 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
                                 ),
                               ),
                               const SizedBox(height: 4),
-                              _Estrelas(value: receita.avaliacao),
+                              _Estrelas(votacao: receita.avaliacao),
                               const SizedBox(height: 8),
                               Text(
                                 receita.comentario.isEmpty
@@ -711,13 +727,13 @@ class _MyReviewsPageState extends State<MyReviewsPage> {
 }
 
 /// ================================ TELA DE CONFIGURAÇÕES ====================================
-class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+class ConfiguracoesPage extends StatefulWidget {
+  const ConfiguracoesPage({super.key});
   @override
-  State<SettingsPage> createState() => _SettingsPageState();
+  State<ConfiguracoesPage> createState() => _ConfiguracoesPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _ConfiguracoesPageState extends State<ConfiguracoesPage> {
   final _nomeUsuario = TextEditingController();
 
   @override
@@ -817,12 +833,11 @@ class _InfoChip extends StatelessWidget {
 }
 
 class _Estrelas extends StatelessWidget {
-  final double value; // 0..5
-  const _Estrelas({required this.value});
+  final double votacao; // 0..5
+  const _Estrelas({required this.votacao});
 
   @override
   Widget build(BuildContext context) {
-    final votacao = value.clamp(0, 5).round(); //valor arredondado
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(
