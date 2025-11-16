@@ -1,10 +1,3 @@
-// lib/main.dart
-// App: Receitas & Avaliações (corrigido para padrão do professor)
-// Telas: Home (/), Detalhe (/detalhe), Minhas Avaliações (/avaliacoes), Config (/config)
-// Requisitos mantidos: Rotas nomeadas, arguments com ID, ListView.builder, FutureBuilder + http,
-// shared_preferences (simples + JSON), formulário (TextField + Slider), ícones/botões/onPressed,
-// bônus CRUD (JSONPlaceholder).
-
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
